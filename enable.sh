@@ -1,6 +1,6 @@
-#!/usr/bin/env bash
-# enable.sh - 启用 dsh-lan 开机自启，并立即启动服务。
-set -euo pipefail
+#!/bin/sh
+# enable.sh - 启用 dsh-lan 开机自启，并立即启动服务。纯 POSIX sh。
+set -eu
 
 SERVICE_NAME="dsh-lan"
 DESTDIR="${DESTDIR:-}"
@@ -8,15 +8,14 @@ DESTDIR="${DESTDIR:-}"
 info() { printf '==> %s\n' "$*"; }
 die()  { printf '错误: %s\n' "$*" >&2; exit 1; }
 
-if [[ -z "${DESTDIR}" ]]; then
-	[[ "$(id -u)" -eq 0 ]] || die "需要 root 权限，请使用：sudo ./enable.sh"
-fi
-
-if [[ -z "${DESTDIR}" && ! -f "/etc/systemd/system/${SERVICE_NAME}.service" ]]; then
-	die "还没安装 ${SERVICE_NAME}，先执行：sudo ./install.sh"
-fi
-
-if [[ -n "${DESTDIR}" ]]; then
+if [ -z "${DESTDIR}" ]; then
+	if [ "$(id -u)" -ne 0 ]; then
+		die "需要 root 权限，请使用：sudo ./enable.sh"
+	fi
+	if [ ! -f "/etc/systemd/system/${SERVICE_NAME}.service" ]; then
+		die "还没安装 ${SERVICE_NAME}，先执行：sudo ./install.sh"
+	fi
+else
 	info "DESTDIR 已设置，跳过 systemctl"
 	exit 0
 fi

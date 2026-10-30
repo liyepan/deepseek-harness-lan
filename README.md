@@ -152,7 +152,7 @@ dsh-lan 0.1.0
 
 ### 装成系统服务
 
-四个脚本，都是 root 跑，互不依赖：
+四个脚本，都是 root 跑，互不依赖。全部是纯 POSIX sh，`sudo sh install.sh`、`sudo bash install.sh`、`sudo ./install.sh` 都行（dash 也没有 `[[` 依赖）：
 
 ```bash
 sudo ./install.sh     # 复制二进制到 /usr/bin，生成 /etc/systemd/system/dsh-lan.service

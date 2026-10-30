@@ -1,6 +1,6 @@
-#!/usr/bin/env bash
-# disable.sh - 停止 dsh-lan 并取消开机自启（不删除任何文件）。
-set -euo pipefail
+#!/bin/sh
+# disable.sh - 停止 dsh-lan 并取消开机自启（不删除任何文件）。纯 POSIX sh。
+set -eu
 
 SERVICE_NAME="dsh-lan"
 DESTDIR="${DESTDIR:-}"
@@ -8,11 +8,11 @@ DESTDIR="${DESTDIR:-}"
 info() { printf '==> %s\n' "$*"; }
 die()  { printf '错误: %s\n' "$*" >&2; exit 1; }
 
-if [[ -z "${DESTDIR}" ]]; then
-	[[ "$(id -u)" -eq 0 ]] || die "需要 root 权限，请使用：sudo ./disable.sh"
-fi
-
-if [[ -n "${DESTDIR}" ]]; then
+if [ -z "${DESTDIR}" ]; then
+	if [ "$(id -u)" -ne 0 ]; then
+		die "需要 root 权限，请使用：sudo ./disable.sh"
+	fi
+else
 	info "DESTDIR 已设置，跳过 systemctl"
 	exit 0
 fi
