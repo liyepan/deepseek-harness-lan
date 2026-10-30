@@ -155,8 +155,11 @@ dsh-lan 0.1.0
 四个脚本，都是 root 跑，互不依赖。全部是纯 POSIX sh，`sudo sh install.sh`、`sudo bash install.sh`、`sudo ./install.sh` 都行（dash 也没有 `[[` 依赖）：
 
 ```bash
-sudo ./install.sh     # 复制二进制到 /usr/bin，生成 /etc/systemd/system/dsh-lan.service
-sudo ./enable.sh      # 开机自启 + 立即启动，并回显局域网地址
+sudo ./install.sh            # 复制二进制到 /usr/bin，生成 unit，默认监听 0.0.0.0:8080
+sudo ./install.sh 9000       # 换端口：监听 0.0.0.0:9000
+sudo ./install.sh --port 9000        # 等价写法
+sudo ./install.sh 0.0.0.0:9000       # 也可以直接给完整监听地址
+sudo ./enable.sh             # 开机自启 + 立即启动，并回显局域网地址
 sudo ./disable.sh     # 停止 + 取消自启（文件都还在）
 sudo ./uninstall.sh   # 停服务、删单元、删二进制；加 --purge 连令牌缓存一起删
 ```
@@ -179,7 +182,15 @@ TimeoutStopSec=20
 
 以 root 直接安装（没有 `SUDO_USER`）时不会生成 `User=` 行，服务就是 root 的。
 
-需要换用户/端口/工作目录时用环境变量覆盖后重装：
+端口优先级：**位置参数 > `DSH_LAN_LISTEN` 环境变量 > 8080**。传入的端口必须是 1-65535 的整数，否则脚本直接拒绝并说明用法。
+
+已经装过、服务正在跑时，重装后需要重启才生效（脚本会提示）：
+
+```bash
+sudo ./install.sh 9000 && sudo systemctl restart dsh-lan
+```
+
+换用户/工作目录时用环境变量覆盖后重装：
 
 ```bash
 DSH_LAN_USER=alice DSH_LAN_LISTEN=0.0.0.0:9000 sudo ./install.sh

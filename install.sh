@@ -4,9 +4,15 @@
 # 只做两件事：拷二进制、写 unit。不启动服务，不动 dsh 的任何配置。
 # 纯 POSIX sh（sh / bash / dash 都行）。
 #
+# 用法：
+#   sudo ./install.sh                监听 0.0.0.0:8080
+#   sudo ./install.sh 9000           监听 0.0.0.0:9000
+#   sudo ./install.sh 0.0.0.0:9000   直接给完整监听地址
+#   sudo ./install.sh --port 9000    同上
+#
 # 可选环境变量：
 #   DSH_LAN_USER     服务运行用户，默认 sudo 的调用者；装成 root 服务就传 root
-#   DSH_LAN_LISTEN   监听地址，默认 0.0.0.0:8080
+#   DSH_LAN_LISTEN   监听地址（不传位置参数时生效），默认 0.0.0.0:8080
 #   DSH_LAN_WORKDIR  服务工作目录，默认 ~（由 systemd 解析成服务用户的家目录）
 #   DESTDIR          装到别的前缀（测试用，跳过 root 检查和 systemctl）
 set -eu
@@ -15,15 +21,47 @@ SERVICE_NAME="dsh-lan"
 UNIT_DIR="${DESTDIR:-}/etc/systemd/system"
 UNIT_FILE="$UNIT_DIR/$SERVICE_NAME.service"
 BIN_PATH="${DESTDIR:-}/usr/bin/$SERVICE_NAME"
-LISTEN="${DSH_LAN_LISTEN:-0.0.0.0:8080}"
 WORKDIR="${DSH_LAN_WORKDIR:-~}"
 SERVICE_USER="${DSH_LAN_USER:-${SUDO_USER:-}}"
 
 info() { printf '==> %s\n' "$*"; }
 die()  { printf '错误: %s\n' "$*" >&2; exit 1; }
 
+# ── 监听地址：位置参数 > 环境变量 > 默认 ────────────────────────────────────
+PORT_ARG="${1:-}"
+case "$PORT_ARG" in
+	--port|-p)
+		PORT_ARG="${2:-}"
+		EXTRA="${3:-}"
+		;;
+	"")
+		EXTRA="${2:-}"
+		;;
+	*)
+		EXTRA="${2:-}"
+		;;
+esac
+[ -z "$EXTRA" ] || die "多余参数：$EXTRA（用法：sudo ./install.sh [端口]）"
+
+if [ -n "$PORT_ARG" ]; then
+	case "$PORT_ARG" in
+		*:*) LISTEN="$PORT_ARG" ;;
+		*)   LISTEN="0.0.0.0:$PORT_ARG" ;;
+	esac
+else
+	LISTEN="${DSH_LAN_LISTEN:-0.0.0.0:8080}"
+fi
+
+LISTEN_PORT="${LISTEN##*:}"
+case "$LISTEN_PORT" in
+	''|*[!0-9]*) die "端口不合法：$LISTEN_PORT（要 1-65535，例如 9000 或 0.0.0.0:9000）" ;;
+esac
+if [ "$LISTEN_PORT" -lt 1 ] || [ "$LISTEN_PORT" -gt 65535 ]; then
+	die "端口超出范围：$LISTEN_PORT（要 1-65535）"
+fi
+
 if [ -z "${DESTDIR:-}" ]; then
-	[ "$(id -u)" -eq 0 ] || die "需要 root 权限，请使用：sudo ./install.sh"
+	[ "$(id -u)" -eq 0 ] || die "需要 root 权限，请使用：sudo ./install.sh [端口]"
 	command -v systemctl >/dev/null 2>&1 || die "本机没有 systemctl"
 fi
 
@@ -82,3 +120,12 @@ cat <<NEXT_EOF
   sudo ./enable.sh
 
 NEXT_EOF
+
+if [ -z "${DESTDIR:-}" ] && systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+	cat <<RESTART_EOF
+服务正在运行。让新端口立刻生效：
+
+  sudo systemctl restart $SERVICE_NAME
+
+RESTART_EOF
+fi
