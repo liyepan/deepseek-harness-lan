@@ -89,13 +89,15 @@ WebSocket 的升级请求走同一条 `Rewrite` 路径，所以 `Origin` 也被�
 
 ### 4. 令牌自动登录
 
-dsh 每次启动生成一个新的 32 字节 token，打印在启动行里：
+dsh 每次启动生成一个新的 32 字节 token，打印在自己的启动行里。`dsh-lan` 托管启动时解析这一行拿到 token，并把 token 从即将输出到终端的那一行里抹掉 —— 你只会看到：
 
 ```
-dsh web: http://127.0.0.1:3080/?token=RdkZFTlSkonGWnWGokuWeYI9453VK9VbwirgbqE0PAU
+dsh web: http://127.0.0.1:3080/
 ```
 
-`dsh-lan` 托管启动时直接解析这一行拿到 token。浏览器第一次访问 `/` 时，网关在**转发给上游的那一份请求**里补上 `?token=`，dsh 于是回一个 `303` + `Set-Cookie`，浏览器从此带着 cookie 访问，地址栏始终是干净的 `/`。
+浏览器第一次访问 `/` 时，网关在**转发给上游的那一份请求**里补上 `?token=`，dsh 于是回一个 `303` + `Set-Cookie`，浏览器从此带着 cookie 访问，地址栏始终是干净的 `/`。令牌不打印、不写日志、不进 URL。
+
+需要它的时候（比如手动接管另一个 dsh）：`dsh-lan token` 会把缓存里的令牌打出来。
 
 这个自动补令牌只对**本机网卡地址和 loopback** 生效。这条白名单是安全边界而不是便利：如果对任意 Host 都补，一个 DNS rebinding 页面就能让网关给它发一枚全新的会话 cookie。
 
@@ -103,7 +105,9 @@ dsh web: http://127.0.0.1:3080/?token=RdkZFTlSkonGWnWGokuWeYI9453VK9VbwirgbqE0PA
 
 ## 快速开始
 
-要求：编译期 Go 1.24+；运行期什么都不需要（单二进制、零第三方依赖、离线可编译）。`dsh` 由你自己装好，本工具只调用 PATH 里的 `dsh`。
+要求：编译期 Go 1.24+；运行期不需要安装任何东西（单二进制、零第三方依赖、离线可编译）。`dsh` 由你自己装好。
+
+`dsh` 本身是 Node 程序（启动器是 `#!/usr/bin/env node`），所以**启动 dsh 的那条路径上必须有 node**。本项目不猜、不写死这个路径：需要时用你的**登录 shell**解析一次（`$SHELL -lc "command -v dsh"`），拿到 dsh 和它能用的 `PATH` 再传给子进程。因此版本管理器（nvm 之类）装在哪都无所谓，系统配置里不会出现它的路径。
 
 ```bash
 git clone https://git.linuxacme.com/liyepan/deepseek-harness-lan.git
@@ -124,15 +128,11 @@ dsh-lan 0.1.0
   局域网地址（任何一块网卡都可用）
     http://172.19.4.240:8080/  (ens33)
 
-  浏览器直接打开上面的地址即可，首次访问会自动用令牌登录
-  带令牌的链接（手机扫码/分享用）
-    http://172.19.4.240:8080/?token=...
-
   安全提示
     ...
 ```
 
-手机连同一个 Wi-Fi，直接打开那个地址就能用。
+手机连同一个 Wi-Fi，直接打开那个地址就能用。首次访问由网关在转发时补上启动令牌，浏览器拿到 cookie 之后就与普通登录无异，地址栏始终是干净的 `/`，令牌不会打印到终端，也不会出现在任何地方。
 
 ### 三种使用姿势
 
@@ -143,6 +143,37 @@ dsh-lan 0.1.0
 | 换端口 / 只开某块网卡 | `./dsh-lan --listen 172.19.4.240:9000` |
 
 已经手动跑着 dsh、又不想复制 token 的话，还有一条路：把 dsh 控制台里那条 URL 的 `127.0.0.1` 换成你的局域网 IP 和网关端口，直接粘到浏览器 —— 一次性登录，之后 cookie 自动生效。
+
+### 装成系统服务
+
+四个脚本，都是 root 跑，互不依赖：
+
+```bash
+sudo ./install.sh     # 复制二进制到 /usr/bin，生成 /etc/systemd/system/dsh-lan.service
+sudo ./enable.sh      # 开机自启 + 立即启动，并回显局域网地址
+sudo ./disable.sh     # 停止 + 取消自启（文件都还在）
+sudo ./uninstall.sh   # 停服务、删单元、删二进制；加 --purge 连令牌缓存一起删
+```
+
+服务以 `sudo` 的调用者身份运行（`User=jarue`），工作目录默认是该用户家目录，这样 dsh 的 `~/.dsh` 和模型看到的工作区都是对的。单元文件里**没有** node 路径、没有 nvm 路径、没有 `PATH` 覆盖：
+
+```ini
+[Service]
+User=jarue
+WorkingDirectory=/home/jarue
+Environment=HOME=/home/jarue
+StateDirectory=dsh-lan
+ExecStart=/usr/bin/dsh-lan --listen 0.0.0.0:8080 --state /var/lib/dsh-lan/state.json
+Restart=on-failure
+```
+
+需要换用户/端口/工作目录时用环境变量覆盖后重装：
+
+```bash
+DSH_LAN_USER=alice DSH_LAN_LISTEN=0.0.0.0:9000 sudo ./install.sh
+```
+
+`install.sh` 支持 `DESTDIR=/some/prefix`（不碰系统、不调 systemctl），方便先看一眼生成的文件。
 
 ---
 
@@ -159,7 +190,7 @@ dsh-lan version
 | --- | --- | --- |
 | `--listen` | `0.0.0.0:8080` | 网关绑定地址。`0.0.0.0` = 所有网卡 |
 | `--upstream` | `127.0.0.1:3080` | dsh web 的地址 |
-| `--dsh` | `dsh` | dsh 可执行文件 |
+| `--dsh` | 自动解析 | dsh 可执行文件；默认用登录 shell 解析（`$SHELL -lc "command -v dsh"`），不写死路径 |
 | `--attach` | 关 | 绝不启动 dsh，只接管已在运行的实例 |
 | `--token` | 空 | 手动指定启动令牌；空则从 dsh 输出里抓，再退回复用缓存 |
 | `--state` | `.dsh-lan/state.json` | 令牌缓存位置（仓库内，已 gitignore） |

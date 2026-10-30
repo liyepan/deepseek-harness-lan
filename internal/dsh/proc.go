@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -60,10 +61,15 @@ type Process struct {
 // Start launches dsh and streams its output to stdout/stderr verbatim. The
 // returned process is live but may not have printed its token yet: wait on
 // Ready.
-func Start(bin string, host string, port int, stdout, stderr io.Writer) (*Process, error) {
+func Start(bin string, host string, port int, path string, stdout, stderr io.Writer) (*Process, error) {
 	args := Args(host, port)
 	cmd := exec.Command(bin, args...)
 	cmd.Stdin = nil
+	if path != "" {
+		// The launcher is "#!/usr/bin/env node": node must be reachable from
+		// the child's PATH. It comes from the login shell, never from config.
+		cmd.Env = envWithPath(os.Environ(), path)
+	}
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -111,11 +117,20 @@ func (p *Process) pump(r io.Reader, w io.Writer, parse bool) {
 	for scanner.Scan() {
 		line := scanner.Text()
 		p.tail.add(line)
-		if w != nil {
-			fmt.Fprintln(w, line)
-		}
 		if !parse {
+			if w != nil {
+				fmt.Fprintln(w, line)
+			}
 			continue
+		}
+		// dsh prints its launch token exactly once, on stdout. This tool
+		// captures it; the terminal keeps only the address.
+		if redacted, changed := RedactLaunchLine(line); changed {
+			if w != nil {
+				fmt.Fprintln(w, redacted)
+			}
+		} else if w != nil {
+			fmt.Fprintln(w, line)
 		}
 		if token := TokenFromLine(line); token != "" {
 			p.mu.Lock()

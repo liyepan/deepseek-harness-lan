@@ -39,10 +39,10 @@ func runDoctor(args []string, out, errw io.Writer) int {
 
 	fmt.Fprintf(out, "\ndsh-lan %s doctor\n\n", Version)
 
-	if path, err := dsh.LookPath("dsh"); err != nil {
-		warn("dsh", err.Error())
+	if res, err := dsh.Resolve(""); err != nil {
+		report(false, "dsh", err.Error())
 	} else {
-		report(true, "dsh", path)
+		report(true, "dsh", res.Bin+"  ("+res.Source+")")
 	}
 
 	if dsh.UpstreamUp(*upstream, 500*time.Millisecond) {

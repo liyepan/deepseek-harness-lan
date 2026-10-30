@@ -51,7 +51,7 @@ func usage(w io.Writer) {
 		"start flags:",
 		"  --listen ADDR        address to bind (default 0.0.0.0:8080, all interfaces)",
 		"  --upstream ADDR      dsh web address (default 127.0.0.1:3080)",
-		"  --dsh PATH           dsh executable (default \"dsh\")",
+		"  --dsh PATH           dsh executable (default: resolved from the login shell)",
 		"  --attach             never spawn dsh, only proxy an already running one",
 		"  --token TOKEN        dsh launch token (default: scraped from dsh, then cached)",
 		"  --state PATH         token cache (default .dsh-lan/state.json)",

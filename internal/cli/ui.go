@@ -14,13 +14,12 @@ type bannerData struct {
 	upstream  string
 	port      int
 	token     string
-	inject    bool
 	addresses []lan.Address
 	spawned   *dsh.Process
 }
 
-// banner prints everything the user needs: where to point a phone, which URL
-// already carries the token, and what the exposure costs.
+// banner prints everything the user needs: where to point a phone and what the
+// exposure costs. It deliberately never prints the launch token.
 func banner(w io.Writer, d bannerData) {
 	label := func(k, v string) string {
 		return fmt.Sprintf("  %-8s%s\n", k, v)
@@ -45,20 +44,11 @@ func banner(w io.Writer, d bannerData) {
 	}
 
 	fmt.Fprintln(w)
-	switch {
-	case d.token == "":
-		fmt.Fprint(w, "  令牌未知\n")
-		fmt.Fprint(w, "    浏览器打开 http://<局域网IP>:"+fmt.Sprint(d.port)+"/?token=<dsh 控制台里那个 token>\n")
-	case d.inject && len(d.addresses) > 0:
-		fmt.Fprint(w, "  浏览器直接打开上面的地址即可，首次访问会自动用令牌登录\n")
-		fmt.Fprintf(w, "  带令牌的链接（手机扫码/分享用）\n    http://%s:%d/?token=%s\n",
-			d.addresses[0].IP, d.port, d.token)
-	case len(d.addresses) > 0:
-		fmt.Fprintf(w, "  带令牌的链接\n    http://%s:%d/?token=%s\n",
-			d.addresses[0].IP, d.port, d.token)
+	if d.token == "" {
+		fmt.Fprint(w, "  注意  没有读到 dsh 的启动令牌，首次访问需要手动完成认证\n\n")
 	}
 
-	fmt.Fprint(w, "\n  安全提示\n")
+	fmt.Fprint(w, "  安全提示\n")
 	fmt.Fprint(w, "    能打开这个页面的人，就能在这台机器上执行命令、读写文件。\n")
 	fmt.Fprint(w, "    只在可信局域网里开，不要把端口映射到公网。\n")
 	fmt.Fprint(w, "    Ctrl+C 退出")

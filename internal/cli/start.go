@@ -45,13 +45,12 @@ func parseStart(args []string, errw io.Writer) (*startOptions, error) {
 		listen:    defaultListen,
 		upstream:  defaultUpstream,
 		statePath: defaultState,
-		dshBin:    "dsh",
 	}
 	fs := flag.NewFlagSet("start", flag.ContinueOnError)
 	fs.SetOutput(errw)
 	fs.StringVar(&opts.listen, "listen", opts.listen, "address to bind (default 0.0.0.0:8080)")
 	fs.StringVar(&opts.upstream, "upstream", opts.upstream, "dsh web address (default 127.0.0.1:3080)")
-	fs.StringVar(&opts.dshBin, "dsh", opts.dshBin, "dsh executable")
+	fs.StringVar(&opts.dshBin, "dsh", "", "dsh executable (default: resolved from your login shell)")
 	fs.BoolVar(&opts.attach, "attach", false, "never spawn dsh")
 	fs.StringVar(&opts.token, "token", "", "dsh launch token")
 	fs.StringVar(&opts.statePath, "state", opts.statePath, "token cache path")
@@ -139,7 +138,6 @@ func runStart(args []string, out, errw io.Writer) int {
 		upstream:  opts.upstream,
 		port:      listenPort(ln, opts.listen),
 		token:     token,
-		inject:    !opts.noInject,
 		addresses: lan.Addresses(),
 		spawned:   proc,
 	})
@@ -198,14 +196,15 @@ func spawnDsh(ctx context.Context, opts *startOptions, out, errw io.Writer) (*ds
 		return nil, "", fmt.Errorf("--upstream port must be numeric, got %q", portStr)
 	}
 
-	bin, err := dsh.LookPath(opts.dshBin)
+	resolved, err := dsh.Resolve(opts.dshBin)
 	if err != nil {
 		fmt.Fprintf(errw, "dsh-lan: %v\n", err)
 		return nil, "", err
 	}
 
-	fmt.Fprintf(out, "dsh-lan: starting %s %s\n", bin, strings.Join(dsh.Args(host, port), " "))
-	proc, err := dsh.Start(bin, host, port, out, errw)
+	fmt.Fprintf(out, "dsh-lan: starting %s %s  (%s)\n",
+		resolved.Bin, strings.Join(dsh.Args(host, port), " "), resolved.Source)
+	proc, err := dsh.Start(resolved.Bin, host, port, resolved.Path, out, errw)
 	if err != nil {
 		fmt.Fprintf(errw, "dsh-lan: %v\n", err)
 		return nil, "", err
