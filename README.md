@@ -161,17 +161,23 @@ sudo ./disable.sh     # 停止 + 取消自启（文件都还在）
 sudo ./uninstall.sh   # 停服务、删单元、删二进制；加 --purge 连令牌缓存一起删
 ```
 
-服务以 `sudo` 的调用者身份运行（`User=jarue`），工作目录默认是该用户家目录，这样 dsh 的 `~/.dsh` 和模型看到的工作区都是对的。单元文件里**没有** node 路径、没有 nvm 路径、没有 `PATH` 覆盖：
+服务以 `sudo` 的调用者身份运行（`User=jarue`），工作目录直接写 `~` —— 由 systemd 自己解析成服务用户的家目录，安装脚本不去查、不去猜任何人家的路径。单元文件里**没有** node 路径、没有 nvm 路径、没有 `PATH`、没有 `HOME`：
 
 ```ini
 [Service]
 User=jarue
-WorkingDirectory=/home/jarue
-Environment=HOME=/home/jarue
+Type=simple
+WorkingDirectory=~
 StateDirectory=dsh-lan
+StateDirectoryMode=0700
 ExecStart=/usr/bin/dsh-lan --listen 0.0.0.0:8080 --state /var/lib/dsh-lan/state.json
 Restart=on-failure
+RestartSec=3
+KillMode=mixed
+TimeoutStopSec=20
 ```
+
+以 root 直接安装（没有 `SUDO_USER`）时不会生成 `User=` 行，服务就是 root 的。
 
 需要换用户/端口/工作目录时用环境变量覆盖后重装：
 
