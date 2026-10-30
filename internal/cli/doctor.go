@@ -40,10 +40,10 @@ func runDoctor(args []string, out, errw io.Writer) int {
 	fmt.Fprintf(out, "\ndsh-lan %s doctor\n\n", Version)
 
 	command := dsh.DefaultCommand
-	if bin, err := dsh.CommandWord(command); err != nil {
+	if _, err := dsh.CommandWord(command); err != nil {
 		report(false, "启动命令", command+"  ("+err.Error()+")")
 	} else {
-		report(true, "启动命令", command+"  ->  "+bin)
+		report(true, "启动命令", command)
 	}
 
 	if dsh.UpstreamUp(*upstream, 500*time.Millisecond) {
