@@ -1,0 +1,7 @@
+# build output
+/dsh-lan
+/dist/
+*.exe
+
+# local runtime state (cached dsh launch token)
+/.dsh-lan/
