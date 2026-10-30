@@ -107,7 +107,13 @@ dsh web: http://127.0.0.1:3080/
 
 要求：编译期 Go 1.24+；运行期不需要安装任何东西（单二进制、零第三方依赖、离线可编译）。`dsh` 由你自己装好。
 
-`dsh` 本身是 Node 程序（启动器是 `#!/usr/bin/env node`），所以**启动 dsh 的那条路径上必须有 node**。本项目不猜、不写死这个路径：需要时用你的**登录 shell**解析一次（`$SHELL -lc "command -v dsh"`），拿到 dsh 和它能用的 `PATH` 再传给子进程。因此版本管理器（nvm 之类）装在哪都无所谓，系统配置里不会出现它的路径。
+本工具只做两件事：**转发流量**、**捕获启动令牌**。它不解析、不探测 dsh 装在哪，也不关心 dsh 用什么运行时 —— 启动时把这条命令行原样交给登录 shell：
+
+```bash
+$SHELL -lc 'exec dsh web --host 127.0.0.1 --port 3080 --no-open'
+```
+
+终端里能跑，服务里就能跑。dsh 装在哪、依赖什么，与这里无关；系统配置里也不会出现任何解释器路径。
 
 ```bash
 git clone https://git.linuxacme.com/liyepan/deepseek-harness-lan.git
@@ -190,7 +196,7 @@ dsh-lan version
 | --- | --- | --- |
 | `--listen` | `0.0.0.0:8080` | 网关绑定地址。`0.0.0.0` = 所有网卡 |
 | `--upstream` | `127.0.0.1:3080` | dsh web 的地址 |
-| `--dsh` | 自动解析 | dsh 可执行文件；默认用登录 shell 解析（`$SHELL -lc "command -v dsh"`），不写死路径 |
+| `--command` | `dsh web --host 127.0.0.1 --port 3080 --no-open` | 原样执行的命令行，由登录 shell 执行 |
 | `--attach` | 关 | 绝不启动 dsh，只接管已在运行的实例 |
 | `--token` | 空 | 手动指定启动令牌；空则从 dsh 输出里抓，再退回复用缓存 |
 | `--state` | `.dsh-lan/state.json` | 令牌缓存位置（仓库内，已 gitignore） |
@@ -273,7 +279,7 @@ dsh 自己的 token 已经是 32 字节随机串，再加一层密码在没有 T
 cmd/dsh-lan/        入口
 internal/cli/       子命令、参数、banner、doctor
 internal/gateway/   反向代理：Host/Origin 改写、SSE、WebSocket、日志脱敏
-internal/dsh/       dsh 进程托管与启动行解析
+internal/dsh/       进程托管（登录 shell 执行命令）、启动行解析与令牌脱敏
 internal/lan/       网卡枚举（显示用 / 白名单用两套）
 internal/state/     令牌缓存
 ```

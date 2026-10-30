@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -31,7 +30,7 @@ const (
 type startOptions struct {
 	listen     string
 	upstream   string
-	dshBin     string
+	command    string
 	attach     bool
 	token      string
 	statePath  string
@@ -45,12 +44,13 @@ func parseStart(args []string, errw io.Writer) (*startOptions, error) {
 		listen:    defaultListen,
 		upstream:  defaultUpstream,
 		statePath: defaultState,
+		command:   dsh.DefaultCommand,
 	}
 	fs := flag.NewFlagSet("start", flag.ContinueOnError)
 	fs.SetOutput(errw)
 	fs.StringVar(&opts.listen, "listen", opts.listen, "address to bind (default 0.0.0.0:8080)")
 	fs.StringVar(&opts.upstream, "upstream", opts.upstream, "dsh web address (default 127.0.0.1:3080)")
-	fs.StringVar(&opts.dshBin, "dsh", "", "dsh executable (default: resolved from your login shell)")
+	fs.StringVar(&opts.command, "command", opts.command, "exact command line to run")
 	fs.BoolVar(&opts.attach, "attach", false, "never spawn dsh")
 	fs.StringVar(&opts.token, "token", "", "dsh launch token")
 	fs.StringVar(&opts.statePath, "state", opts.statePath, "token cache path")
@@ -182,29 +182,10 @@ func runStart(args []string, out, errw io.Writer) int {
 	return 0
 }
 
-// spawnDsh starts the fixed dsh command line and waits for its launch token.
+// spawnDsh runs the command line and waits for dsh to print its token.
 func spawnDsh(ctx context.Context, opts *startOptions, out, errw io.Writer) (*dsh.Process, string, error) {
-	host, portStr, err := net.SplitHostPort(opts.upstream)
-	if err != nil {
-		return nil, "", err
-	}
-	if host != dsh.DefaultHost {
-		fmt.Fprintf(errw, "dsh-lan: warning: --upstream host is %s, but this tool starts dsh on %s\n", host, dsh.DefaultHost)
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		return nil, "", fmt.Errorf("--upstream port must be numeric, got %q", portStr)
-	}
-
-	resolved, err := dsh.Resolve(opts.dshBin)
-	if err != nil {
-		fmt.Fprintf(errw, "dsh-lan: %v\n", err)
-		return nil, "", err
-	}
-
-	fmt.Fprintf(out, "dsh-lan: starting %s %s  (%s)\n",
-		resolved.Bin, strings.Join(dsh.Args(host, port), " "), resolved.Source)
-	proc, err := dsh.Start(resolved.Bin, host, port, resolved.Path, out, errw)
+	fmt.Fprintf(out, "dsh-lan: starting: %s\n", opts.command)
+	proc, err := dsh.Start(opts.command, out, errw)
 	if err != nil {
 		fmt.Fprintf(errw, "dsh-lan: %v\n", err)
 		return nil, "", err

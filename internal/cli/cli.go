@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"git.linuxacme.com/liyepan/deepseek-harness-lan/internal/dsh"
 )
 
 // Version is reported by "dsh-lan version" and the startup banner. Override it
@@ -51,7 +53,7 @@ func usage(w io.Writer) {
 		"start flags:",
 		"  --listen ADDR        address to bind (default 0.0.0.0:8080, all interfaces)",
 		"  --upstream ADDR      dsh web address (default 127.0.0.1:3080)",
-		"  --dsh PATH           dsh executable (default: resolved from the login shell)",
+		"  --command LINE       exact command to run (default: the dsh web line below)",
 		"  --attach             never spawn dsh, only proxy an already running one",
 		"  --token TOKEN        dsh launch token (default: scraped from dsh, then cached)",
 		"  --state PATH         token cache (default .dsh-lan/state.json)",
@@ -59,9 +61,12 @@ func usage(w io.Writer) {
 		"  --no-token-inject    never append the launch token automatically",
 		"  --quiet              suppress the per-request log line",
 		"",
-		"The command this tool runs is always, unchanged:",
+		"The command this tool runs, unchanged:",
 		"",
-		"  dsh web --host 127.0.0.1 --port 3080 --no-open",
+		"  " + dsh.DefaultCommand,
+		"",
+		"It is executed by your login shell ($SHELL -lc), so it finds the same",
+		"programs your terminal does.",
 	}
 	fmt.Fprintln(w, strings.Join(lines, "\n"))
 }

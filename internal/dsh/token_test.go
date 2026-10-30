@@ -38,15 +38,9 @@ func TestTokenFromLine(t *testing.T) {
 	}
 }
 
-func TestArgsMatchTheDocumentedCommand(t *testing.T) {
-	got := Args("127.0.0.1", 3080)
-	want := []string{"web", "--host", "127.0.0.1", "--port", "3080", "--no-open"}
-	if len(got) != len(want) {
-		t.Fatalf("Args() = %v, want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("Args()[%d] = %q, want %q", i, got[i], want[i])
-		}
+func TestDefaultCommandIsTheDocumentedOne(t *testing.T) {
+	want := "dsh web --host 127.0.0.1 --port 3080 --no-open"
+	if DefaultCommand != want {
+		t.Fatalf("DefaultCommand = %q, want %q", DefaultCommand, want)
 	}
 }

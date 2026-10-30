@@ -8,27 +8,20 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 )
 
-// Defaults of the dsh web invocation this tool manages. The exact command line
-// is part of the contract:
-//
-//	dsh web --host 127.0.0.1 --port 3080 --no-open
+// DefaultCommand is the exact command line this tool runs. Nothing is appended
+// to it and nothing is rewritten: dsh-lan starts dsh, it does not configure it.
+const DefaultCommand = "dsh web --host 127.0.0.1 --port 3080 --no-open"
+
 const (
 	DefaultHost = "127.0.0.1"
 	DefaultPort = 3080
 )
-
-// Args is the fixed argv this tool hands to dsh. No extra flags are appended:
-// the deployment stays exactly the command the user asked for.
-func Args(host string, port int) []string {
-	return []string{"web", "--host", host, "--port", strconv.Itoa(port), "--no-open"}
-}
 
 // UpstreamUp reports whether something accepts TCP connections at addr.
 func UpstreamUp(addr string, timeout time.Duration) bool {
@@ -40,13 +33,13 @@ func UpstreamUp(addr string, timeout time.Duration) bool {
 	return true
 }
 
-// Process is a supervised "dsh web" child process.
+// Process is a supervised child started from one command line.
 type Process struct {
-	cmd   *exec.Cmd
-	bin   string
-	args  []string
-	tail  *tailBuffer
-	ready chan struct{}
+	cmd     *exec.Cmd
+	command string
+	shell   string
+	tail    *tailBuffer
+	ready   chan struct{}
 
 	mu        sync.RWMutex
 	token     string
@@ -58,18 +51,17 @@ type Process struct {
 	stopped bool
 }
 
-// Start launches dsh and streams its output to stdout/stderr verbatim. The
-// returned process is live but may not have printed its token yet: wait on
-// Ready.
-func Start(bin string, host string, port int, path string, stdout, stderr io.Writer) (*Process, error) {
-	args := Args(host, port)
-	cmd := exec.Command(bin, args...)
+// Start runs command through the user's login shell.
+//
+// The login shell is the whole point: it is the environment the command was
+// written for, with the same profile and the same PATH the user's terminal
+// has. This tool therefore needs to know nothing about how dsh is installed or
+// what it runs on. "exec" replaces the shell with the command, so signals and
+// the exit status belong to the command itself rather than to a wrapper.
+func Start(command string, stdout, stderr io.Writer) (*Process, error) {
+	shell := shellPath()
+	cmd := exec.Command(shell, "-lc", "exec "+command)
 	cmd.Stdin = nil
-	if path != "" {
-		// The launcher is "#!/usr/bin/env node": node must be reachable from
-		// the child's PATH. It comes from the login shell, never from config.
-		cmd.Env = envWithPath(os.Environ(), path)
-	}
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -81,15 +73,15 @@ func Start(bin string, host string, port int, path string, stdout, stderr io.Wri
 	}
 
 	p := &Process{
-		cmd:   cmd,
-		bin:   bin,
-		args:  args,
-		tail:  newTailBuffer(120),
-		ready: make(chan struct{}),
-		done:  make(chan struct{}),
+		cmd:     cmd,
+		command: command,
+		shell:   shell,
+		tail:    newTailBuffer(120),
+		ready:   make(chan struct{}),
+		done:    make(chan struct{}),
 	}
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("cannot start %s: %w", bin, err)
+		return nil, fmt.Errorf("cannot start %q: %w", command, err)
 	}
 
 	var readers sync.WaitGroup
@@ -108,6 +100,19 @@ func Start(bin string, host string, port int, path string, stdout, stderr io.Wri
 		close(p.done)
 	}()
 	return p, nil
+}
+
+// shellPath picks the shell that represents the user's environment.
+func shellPath() string {
+	if sh := os.Getenv("SHELL"); sh != "" {
+		if info, err := os.Stat(sh); err == nil && !info.IsDir() {
+			return sh
+		}
+	}
+	if info, err := os.Stat("/bin/bash"); err == nil && !info.IsDir() {
+		return "/bin/bash"
+	}
+	return "/bin/sh"
 }
 
 // pump copies one child output stream while watching for the launch token.
@@ -170,10 +175,11 @@ func (p *Process) Alive() bool {
 	}
 }
 
-// CommandLine is the exact argv, for diagnostics.
-func (p *Process) CommandLine() string {
-	return strings.Join(append([]string{p.bin}, p.args...), " ")
-}
+// CommandLine is the command the user asked for, for diagnostics.
+func (p *Process) CommandLine() string { return p.command }
+
+// Shell is the login shell used to run it.
+func (p *Process) Shell() string { return p.shell }
 
 // Output returns the tail of the child output, for error reporting.
 func (p *Process) Output() string { return p.tail.String() }
@@ -208,13 +214,20 @@ func (p *Process) Stop(grace time.Duration) error {
 	return nil
 }
 
-// LookPath resolves the dsh executable.
-func LookPath(bin string) (string, error) {
-	path, err := exec.LookPath(bin)
-	if err != nil {
-		return "", fmt.Errorf("%q was not found in PATH; install dsh first or pass --dsh <path>", bin)
+// CommandWord is the program a command line names, resolved through the same
+// login shell the command will run in. It is used by doctor only; nothing in
+// the normal path needs to know where the program lives.
+func CommandWord(command string) (string, error) {
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return "", errors.New("empty command")
 	}
-	return path, nil
+	word := fields[0]
+	out, err := exec.Command(shellPath(), "-lc", "command -v "+word).Output()
+	if err != nil {
+		return "", fmt.Errorf("%q was not found in your login shell", word)
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // IsExitError reports whether err is a non-zero child exit, returning its code.
